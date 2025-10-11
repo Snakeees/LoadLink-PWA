@@ -1,0 +1,16 @@
+# Node
+node_modules
+npm-debug.log
+pnpm-lock.yaml
+
+# Next build output (built inside container)
+.next
+
+# Misc
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+README.md
+.env
+.env.*
