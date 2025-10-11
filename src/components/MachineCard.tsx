@@ -1,6 +1,6 @@
 "use client";
-import type { Machine } from "@/lib/api";
-import { useEffect, useMemo, useState } from "react";
+import type {Machine} from "@/lib/api";
+import {useEffect, useMemo, useState} from "react";
 
 function remaining(endsAt?: string) {
     if (!endsAt) return "";
@@ -12,7 +12,8 @@ function remaining(endsAt?: string) {
 }
 
 export default function MachineCard({ m }: { m: Machine }) {
-    const [tick, setTick] = useState(0);
+    const [, setTick] = useState(0);
+
     useEffect(() => {
         if (m.status !== "running") return;
         const id = setInterval(() => setTick(t => t + 1), 1000);
@@ -24,7 +25,11 @@ export default function MachineCard({ m }: { m: Machine }) {
         if (m.status === "idle") return `Idle: ${m.idleMinutes ?? 0} min`;
         if (m.status === "finished") return "Finished";
         return "Unknown status";
-    }, [m.status, m.endsAt, m.idleMinutes, tick]);
+    }, [m.status, m.endsAt, m.idleMinutes]);
+
+    const context = useMemo(() => {
+        return m.roomLabel || m.roomId;
+    }, [m.roomLabel, m.roomId]);
 
     return (
         <div className="rounded-xl border p-4 shadow-sm">
@@ -32,7 +37,13 @@ export default function MachineCard({ m }: { m: Machine }) {
                 <h3 className="text-lg font-medium">{m.type.toUpperCase()} • {m.id}</h3>
                 <span className="text-xs uppercase tracking-wide text-gray-500">{m.status}</span>
             </div>
+
             <p className="mt-1 text-sm text-gray-700">{subtitle}</p>
+
+            {context && (
+                <p className="mt-2 text-xs text-gray-500">{context}</p>
+            )}
+
             <p className="mt-2 text-xs text-gray-500">
                 {m.user ? `Linked to: ${m.user.name ?? m.user.discordId}` : "Unlinked"}
             </p>
