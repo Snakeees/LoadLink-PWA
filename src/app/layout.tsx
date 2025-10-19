@@ -2,7 +2,7 @@ import type {Metadata, Viewport} from "next";
 import {Geist, Geist_Mono} from "next/font/google";
 import "./globals.css";
 import React from "react";
-import RegisterSW from "@/components/RegisterSW";
+import Script from "next/script";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -34,12 +34,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return (
         <html lang="en">
         <head>
-            <meta name="apple-mobile-web-app-capable" content="yes" />
-            <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+            <meta name="mobile-web-app-capable" content="yes"/>
+            <meta name="mobile-web-app-status-bar-style" content="black-translucent"/>
             <title>LoadLink</title>
         </head>
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-dvh bg-white text-gray-900`}>
-        <RegisterSW/>
+        <Script id="sw-register" strategy="afterInteractive">
+            {`
+                if ('serviceWorker' in navigator) {
+                  const register = () => {
+                    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                      .then(r => console.log('SW registered:', r.scope))
+                      .catch(err => console.error('SW register failed:', err));
+                  };
+                  if (document.readyState === 'complete') register();
+                  else window.addEventListener('load', register, { once: true });
+                }
+              `}
+        </Script>
         {children}
         </body>
         </html>
