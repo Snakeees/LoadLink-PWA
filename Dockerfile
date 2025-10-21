@@ -9,6 +9,7 @@ RUN npm ci
 # ---- builder ----
 FROM node:20-alpine AS builder
 WORKDIR /app
+ARG BACKEND_ORIGIN
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
