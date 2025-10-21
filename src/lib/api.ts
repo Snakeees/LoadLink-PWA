@@ -1,3 +1,4 @@
+// lib/api.ts
 export type Machine = {
     id: string;
     type: "washer" | "dryer";
@@ -5,8 +6,6 @@ export type Machine = {
     idleMinutes?: number;
     endsAt?: string;
     user?: { discordId: string; name?: string } | null;
-
-    // optional context from backend for display
     roomId?: string | null;
     roomLabel?: string | null;
     locationId?: string | null;
@@ -18,19 +17,19 @@ type MachineBackend = {
     qrCodeId: string | null;
     lastUser?: string | null;
     available?: boolean | number | string;
-    type: string;                             // "washer" | "dryer"
-    timeRemaining?: number | null;            // minutes (int)
-    mode?: string | null;                     // arbitrary text like "running"/"finished"
-    lastUpdated?: string | null;              // ISO string
-
-    // context
+    type: string;
+    timeRemaining?: number | null;
+    mode?: string | null;
+    lastUpdated?: string | null;
     roomId?: string | null;
     roomLabel?: string | null;
     locationId?: string | null;
     locationLabel?: string | null;
 };
 
-const base = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+const base = typeof process !== "undefined"
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api")
+    : "/api";
 
 function toBool(v: unknown): boolean | undefined {
     if (v === undefined || v === null) return undefined;
@@ -49,7 +48,6 @@ function deriveStatus(b: MachineBackend): Machine["status"] {
     if (available === true) return "idle";
     if (tr !== undefined && tr > 0) return "running";
     if ((b.mode || "").toLowerCase() === "finished") return "finished";
-    // heuristics: if explicitly unavailable but no time left, call finished
     if (available === false && (!tr || tr <= 0)) return "finished";
     return "unknown";
 }
@@ -74,7 +72,6 @@ function normalizeType(t: string): "washer" | "dryer" {
 }
 
 function pickId(b: MachineBackend): string {
-    // prefer licensePlate, fall back to qrCodeId
     return (b.licensePlate || b.qrCodeId || "unknown").toString();
 }
 
@@ -87,23 +84,31 @@ function toUiMachine(b: MachineBackend): Machine {
         endsAt: computeEndsAt(b),
         idleMinutes: computeIdleMinutes(b, status),
         user: b.lastUser ? {discordId: String(b.lastUser)} : null,
-
         roomId: b.roomId ?? null,
         roomLabel: b.roomLabel ?? null,
         locationId: b.locationId ?? null,
-        locationLabel: b.locationLabel ?? null
+        locationLabel: b.locationLabel ?? null,
     };
 }
 
-export async function fetchMachines(params?: {
-    room?: string;
-    location?: string;
-    type?: "washer" | "dryer";
-    available?: boolean;
-    limit?: number;
-    offset?: number;
-    machine?: string; // licensePlate or qrCodeId
-}): Promise<Machine[]> {
+type FetchOpts = {
+    strict?: boolean;                // if true, throw on non-2xx/network error
+    signal?: AbortSignal;            // for aborting from the UI
+    init?: RequestInit;              // extra fetch options override/extend
+};
+
+export async function fetchMachines(
+    params?: {
+        room?: string;
+        location?: string;
+        type?: "washer" | "dryer";
+        available?: boolean;
+        limit?: number;
+        offset?: number;
+        machine?: string; // licensePlate or qrCodeId
+    },
+    opts: FetchOpts = {}
+): Promise<Machine[]> {
     const qs = new URLSearchParams();
     if (params) {
         if (params.room) qs.set("room", params.room);
@@ -117,7 +122,15 @@ export async function fetchMachines(params?: {
 
     const url = `${base}/machines${qs.toString() ? `?${qs.toString()}` : ""}`;
 
-    const fallback = () => {
+    // Default fetch init appropriate for client components (no cache, include cookies)
+    const init: RequestInit = {
+        cache: "no-store",
+        credentials: "include",
+        signal: opts.signal,
+        ...opts.init,
+    };
+
+    const fallback = (): Machine[] => {
         const demo: MachineBackend[] = [
             {
                 licensePlate: "w1",
@@ -130,7 +143,7 @@ export async function fetchMachines(params?: {
                 roomLabel: "BARH 2F",
                 locationId: "BARH",
                 locationLabel: "BARH",
-                lastUpdated: new Date().toISOString()
+                lastUpdated: new Date().toISOString(),
             },
             {
                 licensePlate: "d4",
@@ -143,24 +156,30 @@ export async function fetchMachines(params?: {
                 roomLabel: "BARH 2F",
                 locationId: "BARH",
                 locationLabel: "BARH",
-                lastUpdated: new Date(Date.now() - 12 * 60_000).toISOString()
-            }
+                lastUpdated: new Date(Date.now() - 12 * 60_000).toISOString(),
+            },
         ];
         return demo.map(toUiMachine);
     };
 
     try {
-        const r = await fetch(url, {next: {revalidate: 10}});
+        const r = await fetch(url, init);
 
         if (!r.ok) {
-            // Non-2xx response — choose: fallback or []
+            if (opts.strict) throw new Error(String(r.status)); // lets UI backoff show HTTP code
             return fallback();
         }
 
         const data = (await r.json()) as MachineBackend[];
         return data.map(toUiMachine);
-    } catch {
-        // Network/parse error — use fallback
+    } catch (err) {
+        // Abort should just bubble quietly; the UI ignores AbortError already
+        if (err instanceof DOMException && err.name === "AbortError") throw err;
+
+        if (opts.strict) {
+            // Surface as generic failure so UI can count a fail streak
+            throw new Error("network");
+        }
         return fallback();
     }
 }
