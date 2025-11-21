@@ -2,9 +2,13 @@
 export type Machine = {
     id: string;
     type: "washer" | "dryer";
-    status: "idle" | "running" | "finished" | "unknown";
+    status: "idle" | "running" | "unknown";
     idleMinutes?: number;
-    endsAt?: string;
+    timeRemaining?: number | null;
+    stickerNumber?: number | null;
+    licensePlate?: string | null;
+    lastUpdated?: string | null;
+    mode?: string | null;
     user?: { discordId: string; name?: string } | null;
     roomId?: string | null;
     roomLabel?: string | null;
@@ -15,6 +19,7 @@ export type Machine = {
 type MachineBackend = {
     licensePlate: string | null;
     qrCodeId: string | null;
+    stickerNumber?: number | string | null;
     lastUser?: string | null;
     available?: boolean | number | string;
     type: string;
@@ -42,23 +47,28 @@ function toBool(v: unknown): boolean | undefined {
     return undefined;
 }
 
+/** Status driven by timeRemaining, with available as a fallback. */
 function deriveStatus(b: MachineBackend): Machine["status"] {
+    if (b.mode === "unknown") return "unknown";
+    const tr =
+        typeof b.timeRemaining === "number" ? b.timeRemaining : undefined;
+
+    if (tr !== undefined) {
+        if (tr > 0) return "running";
+        return "idle"; // tr <= 0 → treated as available
+    }
+
     const available = toBool(b.available);
-    const tr = typeof b.timeRemaining === "number" ? b.timeRemaining : undefined;
     if (available === true) return "idle";
-    if (tr !== undefined && tr > 0) return "running";
-    if ((b.mode || "").toLowerCase() === "finished") return "finished";
-    if (available === false && (!tr || tr <= 0)) return "finished";
+    if (available === false) return "running";
+
     return "unknown";
 }
 
-function computeEndsAt(b: MachineBackend): string | undefined {
-    const tr = typeof b.timeRemaining === "number" ? b.timeRemaining : undefined;
-    if (!tr || tr <= 0) return undefined;
-    return new Date(Date.now() + tr * 60_000).toISOString();
-}
-
-function computeIdleMinutes(b: MachineBackend, status: Machine["status"]): number | undefined {
+function computeIdleMinutes(
+    b: MachineBackend,
+    status: Machine["status"]
+): number | undefined {
     if (status !== "idle") return undefined;
     if (!b.lastUpdated) return undefined;
     const t = Date.parse(b.lastUpdated);
@@ -72,17 +82,35 @@ function normalizeType(t: string): "washer" | "dryer" {
 }
 
 function pickId(b: MachineBackend): string {
+    if (b.stickerNumber !== undefined && b.stickerNumber !== null) {
+        return String(b.stickerNumber);
+    }
     return (b.licensePlate || b.qrCodeId || "unknown").toString();
 }
 
 function toUiMachine(b: MachineBackend): Machine {
     const status = deriveStatus(b);
+    const tr =
+        typeof b.timeRemaining === "number" ? b.timeRemaining : undefined;
+
+    const stickerNumber =
+        b.stickerNumber === undefined || b.stickerNumber === null
+            ? undefined
+            : Number(b.stickerNumber);
+
     return {
         id: pickId(b),
         type: normalizeType(b.type),
         status,
-        endsAt: computeEndsAt(b),
+
+        timeRemaining: tr,                            // ← use raw minutes
         idleMinutes: computeIdleMinutes(b, status),
+
+        stickerNumber,
+        licensePlate: b.licensePlate,
+        lastUpdated: b.lastUpdated ?? null,
+        mode: b.mode ?? null,
+
         user: b.lastUser ? {discordId: String(b.lastUser)} : null,
         roomId: b.roomId ?? null,
         roomLabel: b.roomLabel ?? null,
@@ -92,9 +120,9 @@ function toUiMachine(b: MachineBackend): Machine {
 }
 
 type FetchOpts = {
-    strict?: boolean;                // if true, throw on non-2xx/network error
-    signal?: AbortSignal;            // for aborting from the UI
-    init?: RequestInit;              // extra fetch options override/extend
+    strict?: boolean;
+    signal?: AbortSignal;
+    init?: RequestInit;
 };
 
 export async function fetchMachines(
@@ -105,7 +133,7 @@ export async function fetchMachines(
         available?: boolean;
         limit?: number;
         offset?: number;
-        machine?: string; // licensePlate or qrCodeId
+        machine?: string;
     },
     opts: FetchOpts = {}
 ): Promise<Machine[]> {
@@ -115,14 +143,18 @@ export async function fetchMachines(
         if (params.location) qs.set("location", params.location);
         if (params.type) qs.set("type", params.type);
         if (params.machine) qs.set("machine", params.machine);
-        if (typeof params.available === "boolean") qs.set("available", params.available ? "true" : "false");
-        if (typeof params.limit === "number") qs.set("limit", String(params.limit));
-        if (typeof params.offset === "number") qs.set("offset", String(params.offset));
+        if (typeof params.available === "boolean")
+            qs.set("available", params.available ? "true" : "false");
+        if (typeof params.limit === "number")
+            qs.set("limit", String(params.limit));
+        if (typeof params.offset === "number")
+            qs.set("offset", String(params.offset));
     }
 
-    const url = `${base}/machines${qs.toString() ? `?${qs.toString()}` : ""}`;
+    const url = `${base}/machines${
+        qs.toString() ? `?${qs.toString()}` : ""
+    }`;
 
-    // Default fetch init appropriate for client components (no cache, include cookies)
     const init: RequestInit = {
         cache: "no-store",
         credentials: "include",
@@ -135,6 +167,7 @@ export async function fetchMachines(
             {
                 licensePlate: "w1",
                 qrCodeId: null,
+                stickerNumber: 101,
                 type: "washer",
                 available: false,
                 timeRemaining: 15,
@@ -144,10 +177,12 @@ export async function fetchMachines(
                 locationId: "BARH",
                 locationLabel: "BARH",
                 lastUpdated: new Date().toISOString(),
+                mode: "running",
             },
             {
                 licensePlate: "d4",
                 qrCodeId: null,
+                stickerNumber: 204,
                 type: "dryer",
                 available: true,
                 timeRemaining: 0,
@@ -156,7 +191,10 @@ export async function fetchMachines(
                 roomLabel: "BARH 2F",
                 locationId: "BARH",
                 locationLabel: "BARH",
-                lastUpdated: new Date(Date.now() - 12 * 60_000).toISOString(),
+                lastUpdated: new Date(
+                    Date.now() - 12 * 60_000
+                ).toISOString(),
+                mode: "idle",
             },
         ];
         return demo.map(toUiMachine);
@@ -166,18 +204,17 @@ export async function fetchMachines(
         const r = await fetch(url, init);
 
         if (!r.ok) {
-            if (opts.strict) throw new Error(String(r.status)); // lets UI backoff show HTTP code
+            if (opts.strict) throw new Error(String(r.status));
             return fallback();
         }
 
         const data = (await r.json()) as MachineBackend[];
         return data.map(toUiMachine);
     } catch (err) {
-        // Abort should just bubble quietly; the UI ignores AbortError already
-        if (err instanceof DOMException && err.name === "AbortError") throw err;
+        if (err instanceof DOMException && err.name === "AbortError")
+            throw err;
 
         if (opts.strict) {
-            // Surface as generic failure so UI can count a fail streak
             throw new Error("network");
         }
         return fallback();
