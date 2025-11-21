@@ -120,6 +120,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <meta name="mobile-web-app-capable" content="yes"/>
             <meta name="mobile-web-app-status-bar-style" content="black-translucent"/>
             <link rel="manifest" href="/manifest.json"/>
+            <meta name="theme-color" content="#0a0a0a"/>
             <title>LoadLink</title>
         </head>
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-dvh bg-white text-gray-900`}>
