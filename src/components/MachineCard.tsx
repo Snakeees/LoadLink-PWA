@@ -90,7 +90,7 @@ export default function MachineCard({ m }: { m: Machine }) {
             )}
 
 
-            {m.type === "washer" && mode === "running" && m.status === "idle" && (
+            {mode === "running" && m.status === "idle" && (
                 <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[0.7rem] text-amber-900">
                     This machine likely still has clothes inside.
                 </p>
