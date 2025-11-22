@@ -1,4 +1,14 @@
 // lib/api.ts
+
+export type Room = {
+    roomId: string;
+    label: string;
+    locationId: string | null;
+    locationLabel: string | null;
+    washerCount: number | null;
+    dryerCount: number | null;
+};
+
 export type Machine = {
     id: string;
     type: "washer" | "dryer";
@@ -124,6 +134,54 @@ type FetchOpts = {
     signal?: AbortSignal;
     init?: RequestInit;
 };
+
+export async function fetchRooms(
+    opts: FetchOpts = {}
+): Promise<Room[]> {
+    const url = `${base}/rooms`;
+
+    const init: RequestInit = {
+        cache: "no-store",
+        credentials: "include",
+        signal: opts.signal,
+        ...opts.init,
+    };
+
+    const r = await fetch(url, init);
+    if (!r.ok) {
+        if (opts.strict) throw new Error(String(r.status));
+        return [];
+    }
+
+    return (await r.json()) as Room[];
+}
+
+export async function fetchRoom(
+    roomId: string,
+    opts: FetchOpts = {}
+): Promise<Room | null> {
+    if (!roomId) return null;
+
+    const url = `${base}/rooms/${encodeURIComponent(roomId)}`;
+
+    const init: RequestInit = {
+        cache: "no-store",
+        credentials: "include",
+        signal: opts.signal,
+        ...opts.init,
+    };
+
+    const r = await fetch(url, init);
+
+    if (!r.ok) {
+        if (r.status === 404) return null;
+        if (opts.strict) throw new Error(String(r.status));
+        return null;
+    }
+
+    return (await r.json()) as Room;
+}
+
 
 export async function fetchMachines(
     params?: {

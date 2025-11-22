@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
     title: "LoadLink",
-    description: "Track shared laundry machines, idle times, and notifications.",
+    description: "Track shared laundry [[...slug]], idle times, and notifications.",
     manifest: "/manifest.json",
     icons: {
         icon: [

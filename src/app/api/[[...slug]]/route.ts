@@ -12,11 +12,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest, {params}: { params: Promise<{ slug?: string[] }> }) {
     const incoming = new URL(req.url);
     // Preserve query string exactly
     const target = new URL(BACKEND_ORIGIN);
-    target.pathname = target.pathname.replace(/\/$/, "") + "/machines";
+    const {slug} = await params
+
+    if (slug) {
+        target.pathname = target.pathname.replace(/\/$/, "") + "/" + slug.join("/");
+    }
     target.search = incoming.search;
 
     // Forward a minimal, safe set of headers that affect payload/identity
