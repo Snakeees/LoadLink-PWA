@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export function GET() {
     const version =
         process.env.NEXT_PUBLIC_APP_VERSION ||
-        process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ||
+        process.env.RAILWAY_DEPLOYMENT_ID ||
         "dev";
     const buildAt = process.env.NEXT_PUBLIC_BUILD_AT || new Date().toISOString();
 
